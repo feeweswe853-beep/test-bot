@@ -60,7 +60,7 @@ class GroqAI {
             const response = await axios.post(
                 this.apiUrl,
                 {
-                    model: "llama-3.1-70b-versatile", // نموذج جديد مدعوم ✅
+                    model: "llama-3.3-70b-versatile", // نموذج جديد مدعوم ✅
                     messages: [
                         {
                             role: "system",
