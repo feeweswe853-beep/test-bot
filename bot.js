@@ -106,11 +106,12 @@ async function startSession(guild, member) {
       return false;
     }
 
-    // welcome message from AI
-    const welcome = 'أهلًا، أنا سارة، تكلمني هنا بأي رسالة وسأرد عليك بصوتي';
+    // welcome message from Sienna
+    const welcome = 'أهلا بك أنا Sienna، هل تحتاج مساعدة';
     try { await playTTS(connection, welcome); } catch (e) { console.warn('welcome TTS failed', e); }
 
-    activeSessions.set(member.id, { guildId: guild.id, channelId: channel.id, connection });
+    activeSessions.set(member.id, { userId: member.id, guildId: guild.id, channelId: channel.id, connection });
+    console.log(`👤 Sienna session started for user: ${member.id} (${member.user.tag})`);
     return true;
   } catch (e) { console.error('startSession error', e); return false; }
 }
@@ -127,19 +128,23 @@ async function stopSession(userId) {
   activeSessions.delete(userId);
 }
 
-// handle messages from users who have active sessions
+// handle messages from users who have active Sienna sessions
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   const userId = message.author.id;
-  if (!activeSessions.has(userId)) return;
+  if (!activeSessions.has(userId)) return;  // Only respond to users with active sessions
   const session = activeSessions.get(userId);
   if (!session || !session.connection) return;
 
-  // send user message to AI and play response
+  // send user message to Sienna AI and play response
+  console.log(`📨 Message from ${message.author.tag} (${userId}): ${message.content.substring(0, 50)}...`);
   try {
     const response = await ai.getResponse(userId, message.content, 'default');
-    if (response) playTTS(session.connection, response);
-  } catch (e) { console.error('AI respond error', e); }
+    if (response) {
+      console.log(`🎤 Sienna TTS play for ${userId}: ${response.substring(0, 50)}...`);
+      playTTS(session.connection, response);
+    }
+  } catch (e) { console.error('Sienna AI respond error for', userId, e); }
 });
 
 // Slash command handler (minimal)
