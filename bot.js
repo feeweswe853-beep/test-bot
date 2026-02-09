@@ -1475,6 +1475,16 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
+// ================ حدث البوت جاهز ================
+
+client.on('ready', async () => {
+    console.log(`✅ البوت جاهز! ${client.user.tag}`);
+    console.log(`🏠 البوت موجود في ${client.guilds.cache.size} سيرفر`);
+    
+    // تسجيل الأوامر
+    await registerCommands();
+});
+
 // ... باقي الكود كما هو (الأحداث الأخرى) ...
 
 // تسجيل الدخول
