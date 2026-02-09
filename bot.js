@@ -3,6 +3,7 @@ const { joinVoiceChannel, createAudioPlayer, createAudioResource, NoSubscriberBe
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { Readable } = require('stream');
 const GroqAI = require('./groq-ai');
 
 // Basic config
@@ -66,7 +67,9 @@ async function playTTS(connection, text) {
     const res = await axios.get(url, { responseType: 'arraybuffer', headers: { 'User-Agent': 'Mozilla/5.0' } });
     const audioBuffer = Buffer.from(res.data);
 
-    const resource = createAudioResource(audioBuffer, { inputType: StreamType.Arbitrary });
+    // Convert Buffer to Readable stream to avoid invalid chunk types
+    const stream = Readable.from([audioBuffer]);
+    const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
     const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Stop } });
     player.play(resource);
     try { connection.subscribe(player); } catch (err) { console.warn('subscribe failed', err); }
