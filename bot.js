@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, NoSubscriberBehavior, StreamType, VoiceConnectionStatus } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, NoSubscriberBehavior, StreamType, VoiceConnectionStatus, entersState, AudioPlayerStatus } = require('@discordjs/voice');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -69,10 +69,18 @@ async function playTTS(connection, text) {
 
     // Convert Buffer to Readable stream to avoid invalid chunk types
     const stream = Readable.from([audioBuffer]);
-    const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
+    const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary, inlineVolume: true });
     const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Stop } });
     player.play(resource);
-    try { connection.subscribe(player); } catch (err) { console.warn('subscribe failed', err); }
+    try {
+      const subscription = connection.subscribe(player);
+      if (!subscription) console.warn('No subscription returned when subscribing to player');
+    } catch (err) { console.warn('subscribe failed', err); }
+
+    // diagnostics
+    player.on('error', (err) => console.error('Audio player error', err));
+    player.on(AudioPlayerStatus.Idle, () => console.log('Audio player idle'));
+    player.on('stateChange', (oldState, newState) => console.log('Player state:', oldState.status, '=>', newState.status));
     return player;
   } catch (e) { console.error('playTTS error', e); return null; }
 }
@@ -89,12 +97,18 @@ async function startSession(guild, member) {
     if (!channel) return false;
 
     const connection = joinVoiceChannel({ channelId: channel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator, selfDeaf: false });
-    // wait for ready
-    connection.on(VoiceConnectionStatus.Ready, () => console.log('Voice connection ready'));
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 20000);
+      console.log('Voice connection ready');
+    } catch (e) {
+      console.error('Voice connection failed to become ready', e);
+      try { connection.destroy(); } catch {}
+      return false;
+    }
 
     // welcome message from AI
     const welcome = 'أهلًا، أنا سارة، تكلمني هنا بأي رسالة وسأرد عليك بصوتي';
-    setTimeout(() => playTTS(connection, welcome), 800);
+    try { await playTTS(connection, welcome); } catch (e) { console.warn('welcome TTS failed', e); }
 
     activeSessions.set(member.id, { guildId: guild.id, channelId: channel.id, connection });
     return true;
