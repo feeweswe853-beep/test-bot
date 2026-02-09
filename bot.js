@@ -61,10 +61,6 @@ async function registerCommands() {
 
 // Helper: play TTS in connection using Google Translate TTS (female Arabic)
 async function playTTS(connection, text) {
-  // Prefer ElevenLabs if API key is set
-  if (process.env.ELEVENLABS_API_KEY) {
-    return await playTTS_ElevenLabs(connection, text);
-  }
   try {
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&q=${encodeURIComponent(text)}`;
 
@@ -87,32 +83,6 @@ async function playTTS(connection, text) {
     player.on('stateChange', (oldState, newState) => console.log('Player state:', oldState.status, '=>', newState.status));
     return player;
   } catch (e) { console.error('playTTS error', e); return null; }
-}
-
-// ElevenLabs TTS integration
-async function playTTS_ElevenLabs(connection, text) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) throw new Error('ELEVENLABS_API_KEY not set');
-  // Optional voice id (set in env) or fallback to a common default voice id.
-  const voiceId = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
-  try {
-    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`;
-    const body = { text, voice_settings: { stability: 0.6, similarity_boost: 0.75 } };
-    const res = await axios.post(url, body, { responseType: 'arraybuffer', headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' } });
-    const audioBuffer = Buffer.from(res.data);
-    const stream = Readable.from([audioBuffer]);
-    const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary, inlineVolume: true });
-    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Stop } });
-    player.play(resource);
-    try {
-      const subscription = connection.subscribe(player);
-      if (!subscription) console.warn('No subscription returned when subscribing to player');
-    } catch (err) { console.warn('subscribe failed', err); }
-    player.on('error', (err) => console.error('ElevenLabs audio player error', err));
-    player.on(AudioPlayerStatus.Idle, () => console.log('ElevenLabs audio player idle'));
-    player.on('stateChange', (oldState, newState) => console.log('ElevenLabs Player state:', oldState.status, '=>', newState.status));
-    return player;
-  } catch (e) { console.error('playTTS_ElevenLabs error', e); return null; }
 }
 
 // Start AI session for a user when they join the configured voice channel
