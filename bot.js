@@ -1330,7 +1330,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 
                 // تحضير إنشاء الروم الخاص
                 const privateRoom = await createPrivateVoiceRoom(
-                    guild, 
+                    newState.guild, 
                     settings, 
                     member.id, 
                     member.user.username, 
@@ -1341,7 +1341,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 if (privateRoom) {
                     // إشعار استقبال الطلب
                     await sendAdminAcceptNotification(
-                        guild, 
+                        newState.guild, 
                         settings, 
                         member.id, 
                         existingAdmin.id, 
@@ -1351,12 +1351,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     
                     // نقل الأعضاء للروم الخاص
                     setTimeout(() => {
-                        moveToPrivateRoom(guild, member.id, existingAdmin.id, privateRoom.id);
+                        moveToPrivateRoom(newState.guild, member.id, existingAdmin.id, privateRoom.id);
                     }, 1000);
                     
                     // حفظ معلومات الروم الخاص
                     privateRooms.set(privateRoom.id, {
-                        guildId: guild.id,
+                        guildId: newState.guild.id,
                         clientId: member.id,
                         adminId: existingAdmin.id,
                         createdAt: Date.now(),
@@ -1420,7 +1420,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             }
             
             // تشغيل موسيقى الانتظار
-            const audioSet = getNextAudioSet(guild.id);
+            const audioSet = getNextAudioSet(guildId);
             const waitingPlayer = playAudio(connection, audioSet.waiting || audioSet.background, member.id, true, audioSet);
             
             // تخزين بيانات المكالمة
