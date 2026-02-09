@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes } = require('disco
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, NoSubscriberBehavior, StreamType, VoiceConnectionStatus } = require('@discordjs/voice');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 const GroqAI = require('./groq-ai');
 
 // Basic config
@@ -58,10 +59,14 @@ async function registerCommands() {
 }
 
 // Helper: play TTS in connection using Google Translate TTS (female Arabic)
-function playTTS(connection, text) {
+async function playTTS(connection, text) {
   try {
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&q=${encodeURIComponent(text)}`;
-    const resource = createAudioResource(url, { inputType: StreamType.Arbitrary });
+
+    const res = await axios.get(url, { responseType: 'arraybuffer', headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const audioBuffer = Buffer.from(res.data);
+
+    const resource = createAudioResource(audioBuffer, { inputType: StreamType.Arbitrary });
     const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Stop } });
     player.play(resource);
     try { connection.subscribe(player); } catch (err) { console.warn('subscribe failed', err); }
