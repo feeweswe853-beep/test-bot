@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, EmbedBuilder, ChannelType, PermissionsBitFiel
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, NoSubscriberBehavior, AudioPlayerStatus, entersState, VoiceConnectionStatus, StreamType } = require('@discordjs/voice');
 const fs = require('fs');
 const path = require('path');
-const DeepSeekAI = require('./deepseek-ai.js');
+const GroqAI = require('./groq-ai.js');
 
 // إعداد مكتبة الصوت
 try {
@@ -30,8 +30,8 @@ const OWNER_PREFIX = '!';
 // ملف الإعدادات
 const SETTINGS_FILE = 'settings.json';
 
-// تهيئة DeepSeek AI
-const deepseekAI = new DeepSeekAI(process.env.DEEPSEEK_API_KEY);
+// تهيئة Groq AI (مجاني للأبد!)
+const deepseekAI = new GroqAI(process.env.GROQ_API_KEY);
 
 // دالة لتحميل الإعدادات
 function loadSettings() {
@@ -654,10 +654,14 @@ async function startAIConversation(guildId, userId, userName, connection) {
             personality: 'default'
         });
         
-        // تشغيل صوت ترحيب AI
-        playAudio(connection, 'ai_welcome.mp3', userId, false);
+        // تشغيل صوت ترحيب AI (أو تخطيه إذا لم يكن موجود)
+        try {
+            playAudio(connection, 'ai_welcome.mp3', userId, false);
+        } catch (err) {
+            console.log('⏭️ تخطي صوت الترحيب - ملف غير موجود');
+        }
         
-        // بعد 3 ثواني، البدء بمحادثة AI
+        // بعد 2 ثانية، البدء بمحادثة AI
         setTimeout(async () => {
             const session = aiSessions.get(userId);
             if (!session) return;
@@ -698,9 +702,13 @@ function stopAIConversation(userId) {
         console.log(`🤖 إيقاف محادثة AI مع ${session.userName}`);
         aiSessions.delete(userId);
         
-        // تشغيل صوت وداع
+        // تشغيل صوت وداع (أو تخطيه إذا لم يكن موجود)
         if (session.connection) {
-            playAudio(session.connection, 'ai_goodbye.mp3', userId, false);
+            try {
+                playAudio(session.connection, 'ai_goodbye.mp3', userId, false);
+            } catch (err) {
+                console.log('⏭️ تخطي صوت الوداع - ملف غير موجود');
+            }
         }
         
         return true;
@@ -731,7 +739,7 @@ client.on('messageCreate', async (message) => {
             .addFields(
                 {
                     name: '🤖 **أوامر AI الجديدة**',
-                    value: `\`/ai setup enable\` - تفعيل المساعد الذكي\n\`/ai setup disable\` - تعطيل المساعد\n\`/ai test\` - اختبار المساعد\n\`/automatic\` - العودة للنظام العادي`
+                    value: `\`/ai setup enable\` - تفعيل المساعد الذكي\n\`/ai setup disable\` - تعطيل المساعد\n\`/ai test\` - اختبار المساعد\n\`/automatic\` - العودة للنظام العادي\n\n**ملاحظة:** النظام يستخدم Groq AI (مجاني للأبد!) 🔥`
                 },
                 {
                     name: '📊 **أوامر الإحصائيات**',
@@ -785,7 +793,8 @@ client.on('messageCreate', async (message) => {
                 { name: '🔒 الرومات الخاصة', value: `\`${totalPrivateRooms}\` روم`, inline: true },
                 { name: '🚫 السيرفرات المقفلة', value: `\`${allLockedCount}\` سيرفر (${activeLocked} موجودة)`, inline: true },
                 { name: '🔌 حالة AI', value: aiStats.apiStatus, inline: true },
-                { name: '🟢 وقت التشغيل', value: `<t:${Math.floor(Date.now()/1000)}:R>`, inline: true }
+                { name: '� المزود', value: 'Groq AI (مجاني)', inline: true },
+                { name: '�🟢 وقت التشغيل', value: `<t:${Math.floor(Date.now()/1000)}:R>`, inline: true }
             )
             .setFooter({ text: `مالك البوت: ${message.author.tag}` })
             .setTimestamp();
@@ -996,14 +1005,14 @@ client.on('interactionCreate', async (interaction) => {
                 .setColor(settings.aiEnabled ? 0x2ecc71 : 0xe74c3c)
                 .setTitle(settings.aiEnabled ? '✅ تم تفعيل المساعد الذكي!' : '❌ تم تعطيل المساعد الذكي')
                 .setDescription(settings.aiEnabled 
-                    ? `**سارة جاهزة الآن للرد على العملاء!**\n\nعند دخول أي عميل لروم الانتظار، سارة ستترحب به وترد على أسئلته تلقائياً.\n\n**مميزات سارة:**\n• 🎤 صوت أنثوي مصري\n• 🤖 ذكاء اصطناعي متقدم\n• ⚡ ردود فورية\n• 😊 ودودة ومرحة`
+                    ? `**سارة جاهزة الآن للرد على العملاء!**\n\nعند دخول أي عميل لروم الانتظار، سارة ستترحب به وترد على أسئلته تلقائياً.\n\n**مميزات سارة:**\n• 🎤 صوت أنثوي مصري\n• 🤖 ذكاء اصطناعي متقدم (Groq AI)\n• ⚡ ردود فورية\n• 😊 ودودة ومرحة\n• 🔥 مجاني للأبد!`
                     : 'تم تعطيل المساعد الذكي، النظام يعمل بالوضع العادي.')
                 .addFields({
                     name: '⚙️ الإعدادات',
                     value: `• **الحالة:** ${settings.aiEnabled ? 'نشط' : 'غير نشط'}\n` +
                            `• **الاسم:** ${settings.aiPersonality === 'default' ? 'سارة' : settings.aiPersonality === 'professional' ? 'نور' : 'ياسمين'}\n` +
                            `• **الشخصية:** ${settings.aiPersonality === 'default' ? 'مصرية مرحة' : settings.aiPersonality === 'professional' ? 'احترافية' : 'خليجية ودودة'}\n` +
-                           `• **النظام:** DeepSeek AI`
+                           `• **النظام:** 🔥 Groq AI (مجاني)`
                 })
                 .setFooter({ text: settings.aiEnabled ? 'استخدم /ai test للتجربة' : 'استخدم /ai setup enable للتفعيل' })
                 .setTimestamp();
@@ -1477,7 +1486,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
 // ================ حدث البوت جاهز ================
 
-client.on('ready', async () => {
+client.on('clientReady', async () => {
     console.log(`✅ البوت جاهز! ${client.user.tag}`);
     console.log(`🏠 البوت موجود في ${client.guilds.cache.size} سيرفر`);
     
@@ -1493,8 +1502,8 @@ if (!config.token) {
     process.exit(1);
 }
 
-console.log('🚀 بدء تشغيل البوت مع نظام AI...');
-console.log('🤖 DeepSeek API:', deepseekAI.getStats().apiStatus);
+console.log('🚀 بدء تشغيل البوت مع نظام AI مجاني...');
+console.log('🔥 Groq API:', deepseekAI.getStats().apiStatus);
 
 client.login(config.token).catch(err => console.error('❌ فشل تسجيل الدخول:', err));
 
