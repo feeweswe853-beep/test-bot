@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ChannelType, PermissionsBitField, SlashCommandBuilder, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ChannelType, PermissionsBitField, SlashCommandBuilder, REST, Routes, StringSelectMenuBuilder, ActionRowBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, NoSubscriberBehavior, AudioPlayerStatus, entersState, VoiceConnectionStatus, StreamType } = require('@discordjs/voice');
 const fs = require('fs');
 const path = require('path');
@@ -197,7 +197,7 @@ const commands = [
                 .addStringOption(option =>
                     option.setName('id')
                         .setDescription('ID التصنيف')
-                        .setRequired(true)))
+                        .setRequired(false)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('voice')
@@ -205,7 +205,7 @@ const commands = [
                 .addStringOption(option =>
                     option.setName('id')
                         .setDescription('ID روم الصوت')
-                        .setRequired(true)))
+                        .setRequired(false)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('text')
@@ -213,7 +213,7 @@ const commands = [
                 .addStringOption(option =>
                     option.setName('id')
                         .setDescription('ID روم النص')
-                        .setRequired(true)))
+                        .setRequired(false)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('role')
@@ -221,7 +221,7 @@ const commands = [
                 .addStringOption(option =>
                     option.setName('id')
                         .setDescription('ID الرتبة')
-                        .setRequired(true)))
+                        .setRequired(false)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('waiting')
@@ -594,7 +594,7 @@ client.on('messageCreate', async (message) => {
                 },
                 {
                     name: '⚙️ **أوامر التحكم**',
-                    value: `\`${OWNER_PREFIX}lock <ID_السيرفر>\` - قفل البوت في سيرفر محدد\n\`${OWNER_PREFIX}unlock <ID_السيرفر>\` - فتح البوت في سيرفر\n\`${OWNER_PREFIX}leave <ID_السيرفر>\` - طلع البوت\n\`${OWNER_PREFIX}clearsettings <ID_السيرفر>\` - مسح إعدادات\n\`${OWNER_PREFIX}clearownerdm\` - مسح الشات الخاص مع المالك`
+                    value: `\`${OWNER_PREFIX}lock <ID_السيرفر>\` - قفل البوت في سيرفر محدد\n\`${OWNER_PREFIX}unlock <ID_السيرفر>\` - فتح البوت في سيرفر\n\`${OWNER_PREFIX}lock all\` - قفل كل السيرفرات الحالية\n\`${OWNER_PREFIX}unlock all\` - فتح كل السيرفرات\n\`${OWNER_PREFIX}leave <ID_السيرفر>\` - طلع البوت\n\`${OWNER_PREFIX}clearsettings <ID_السيرفر>\` - مسح إعدادات\n\`${OWNER_PREFIX}clearownerdm\` - مسح الشات الخاص مع المالك`
                 },
                 {
                     name: '👑 **أوامر عامة**',
@@ -621,6 +621,9 @@ client.on('messageCreate', async (message) => {
         const allLockedCount = lockedServers.length; // كل السيرفرات المقفلة حتى اللي البوت مش فيها
         const activeLocked = lockedServers.filter(id => client.guilds.cache.has(id)).length; // بس اللي البوت موجود فيها
         
+        // السيرفرات الجديدة الممنوعة
+        const blockNewServers = serverSettings.blockNewServers || false;
+        
         const statsEmbed = new EmbedBuilder()
             .setColor(0x3498db)
             .setTitle('📊 إحصائيات البوت')
@@ -631,6 +634,7 @@ client.on('messageCreate', async (message) => {
                 { name: '📞 المكالمات النشطة', value: `\`${totalActiveCalls}\` مكالمة`, inline: true },
                 { name: '🔒 الرومات الخاصة', value: `\`${totalPrivateRooms}\` روم`, inline: true },
                 { name: '🚫 السيرفرات المقفلة', value: `\`${allLockedCount}\` سيرفر (${activeLocked} موجودة)`, inline: true },
+                { name: '🚷 منع السيرفرات الجديدة', value: blockNewServers ? '✅ مفعل' : '❌ غير مفعل', inline: true },
                 { name: '🟢 وقت التشغيل', value: `<t:${Math.floor(Date.now()/1000)}:R>`, inline: true }
             )
             .setFooter({ text: `مالك البوت: ${message.author.tag}` })
@@ -1301,6 +1305,86 @@ client.on('messageCreate', async (message) => {
     if (command === 'lock') {
         const serverId = args[0];
         
+        // خاصية lock all
+        if (serverId === 'all') {
+            const confirmEmbed = new EmbedBuilder()
+                .setColor(0xe74c3c)
+                .setTitle('⚠️ تأكيد قفل كل السيرفرات')
+                .setDescription(`**هل أنت متأكد من قفل كل السيرفرات الموجودة حالياً؟**\n\n**سيتم:**\n• قفل كل الـ **${client.guilds.cache.size}** سيرفر\n• منع دخول البوت لأي سيرفر جديد\n• لا يمكن فتح السيرفرات إلا باستخدام \`!unlock all\` أو \`!unlock <ID>\``)
+                .setFooter({ text: 'اكتب "تأكيد" خلال 30 ثانية للمتابعة' });
+            
+            const confirmMessage = await message.reply({ embeds: [confirmEmbed] });
+            
+            const filter = m => m.author.id === BOT_OWNER_ID;
+            try {
+                const collected = await message.channel.awaitMessages({ 
+                    filter, 
+                    max: 1, 
+                    time: 30000, 
+                    errors: ['time'] 
+                });
+                
+                if (collected.first().content === 'تأكيد') {
+                    // قفل كل السيرفرات الحالية
+                    const allGuilds = client.guilds.cache;
+                    if (!serverSettings.lockedServers) serverSettings.lockedServers = [];
+                    
+                    let lockedCount = 0;
+                    for (const guild of allGuilds.values()) {
+                        if (!serverSettings.lockedServers.includes(guild.id)) {
+                            serverSettings.lockedServers.push(guild.id);
+                            lockedCount++;
+                        }
+                    }
+                    
+                    // تفعيل منع السيرفرات الجديدة
+                    serverSettings.blockNewServers = true;
+                    saveSettings(serverSettings);
+                    
+                    await confirmMessage.edit({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(0x2ecc71)
+                                .setTitle('✅ تم قفل كل السيرفرات بنجاح!')
+                                .setDescription(`**تم قفل جميع السيرفرات بنجاح**\n\n**الإحصائيات:**`)
+                                .addFields(
+                                    { name: '🔒 **السيرفرات المقفلة**', value: `\`${lockedCount}\` سيرفر`, inline: true },
+                                    { name: '🚫 **منع السيرفرات الجديدة**', value: '✅ مفعل', inline: true },
+                                    { name: '🏠 **إجمالي السيرفرات**', value: `\`${allGuilds.size}\``, inline: true }
+                                )
+                                .addFields({
+                                    name: '💡 **معلومات إضافية**',
+                                    value: '• تم إضافة كل السيرفرات للقائمة المقفلة\n• لن يتمكن البوت من دخول أي سيرفر جديد\n• لفتح سيرفر محدد: `!unlock <ID>`\n• لفتح كل السيرفرات: `!unlock all`'
+                                })
+                                .setFooter({ text: 'تم القفل بواسطة المالك' })
+                                .setTimestamp()
+                        ]
+                    });
+                    
+                    console.log(`🔒 تم قفل كل السيرفرات (${lockedCount} سيرفر)`);
+                } else {
+                    await confirmMessage.edit({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(0xf39c12)
+                                .setTitle('❌ تم إلغاء العملية')
+                                .setDescription('لم يتم قفل السيرفرات.')
+                        ]
+                    });
+                }
+            } catch (error) {
+                await confirmMessage.edit({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x95a5a6)
+                            .setTitle('⏰ انتهى الوقت')
+                            .setDescription('لم يتم الرد في الوقت المحدد.')
+                    ]
+                });
+            }
+            return;
+        }
+        
         if (!serverId) {
             const lockEmbed = new EmbedBuilder()
                 .setColor(0xe74c3c)
@@ -1360,6 +1444,79 @@ client.on('messageCreate', async (message) => {
     // أمر unlock للسيرفر المحدد (حتى لو البوت مش موجود)
     if (command === 'unlock') {
         const serverId = args[0];
+        
+        // خاصية unlock all
+        if (serverId === 'all') {
+            const confirmEmbed = new EmbedBuilder()
+                .setColor(0x2ecc71)
+                .setTitle('⚠️ تأكيد فتح كل السيرفرات')
+                .setDescription(`**هل أنت متأكد من فتح كل السيرفرات المقفلة؟**\n\n**سيتم:**\n• فتح كل السيرفرات المقفلة (${serverSettings.lockedServers?.length || 0})\n• السماح للبوت بدخول سيرفرات جديدة\n• لا يؤثر على السيرفرات التي خرج منها البوت`)
+                .setFooter({ text: 'اكتب "تأكيد" خلال 30 ثانية للمتابعة' });
+            
+            const confirmMessage = await message.reply({ embeds: [confirmEmbed] });
+            
+            const filter = m => m.author.id === BOT_OWNER_ID;
+            try {
+                const collected = await message.channel.awaitMessages({ 
+                    filter, 
+                    max: 1, 
+                    time: 30000, 
+                    errors: ['time'] 
+                });
+                
+                if (collected.first().content === 'تأكيد') {
+                    const totalLocked = serverSettings.lockedServers?.length || 0;
+                    
+                    // مسح كل السيرفرات من القائمة المقفلة
+                    serverSettings.lockedServers = [];
+                    
+                    // إيقاف منع السيرفرات الجديدة
+                    serverSettings.blockNewServers = false;
+                    saveSettings(serverSettings);
+                    
+                    await confirmMessage.edit({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(0x2ecc71)
+                                .setTitle('✅ تم فتح كل السيرفرات بنجاح!')
+                                .setDescription(`**تم فتح جميع السيرفرات بنجاح**\n\n**الإحصائيات:**`)
+                                .addFields(
+                                    { name: '🔓 **السيرفرات المفتوحة**', value: `\`${totalLocked}\` سيرفر`, inline: true },
+                                    { name: '🚫 **منع السيرفرات الجديدة**', value: '❌ غير مفعل', inline: true },
+                                    { name: '🏠 **سيرفرات البوت الحالية**', value: `\`${client.guilds.cache.size}\``, inline: true }
+                                )
+                                .addFields({
+                                    name: '💡 **معلومات إضافية**',
+                                    value: '• تم إزالة كل السيرفرات من القائمة المقفلة\n• يمكن للبوت الآن دخول سيرفرات جديدة\n• يمكن قفل سيرفرات معينة باستخدام `!lock <ID>`'
+                                })
+                                .setFooter({ text: 'تم الفتح بواسطة المالك' })
+                                .setTimestamp()
+                        ]
+                    });
+                    
+                    console.log(`🔓 تم فتح كل السيرفرات (${totalLocked} سيرفر)`);
+                } else {
+                    await confirmMessage.edit({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(0xf39c12)
+                                .setTitle('❌ تم إلغاء العملية')
+                                .setDescription('لم يتم فتح السيرفرات.')
+                        ]
+                    });
+                }
+            } catch (error) {
+                await confirmMessage.edit({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x95a5a6)
+                            .setTitle('⏰ انتهى الوقت')
+                            .setDescription('لم يتم الرد في الوقت المحدد.')
+                    ]
+                });
+            }
+            return;
+        }
         
         if (!serverId) {
             const unlockEmbed = new EmbedBuilder()
@@ -1428,7 +1585,7 @@ client.on('messageCreate', async (message) => {
                 },
                 {
                     name: '⚙️ **أوامر التحكم**',
-                    value: `\`${OWNER_PREFIX}lock <ID_السيرفر>\` - قفل البوت في سيرفر محدد (حتى لو البوت مش موجود)\n\`${OWNER_PREFIX}unlock <ID_السيرفر>\` - فتح البوت في سيرفر محدد (حتى لو البوت مش موجود)\n\`${OWNER_PREFIX}leave <ID_السيرفر>\` - إخراج البوت من سيرفر\n\`${OWNER_PREFIX}clearsettings <ID_السيرفر>\` - مسح إعدادات سيرفر`
+                    value: `\`${OWNER_PREFIX}lock <ID_السيرفر>\` - قفل البوت في سيرفر محدد (حتى لو البوت مش موجود)\n\`${OWNER_PREFIX}unlock <ID_السيرفر>\` - فتح البوت في سيرفر محدد (حتى لو البوت مش موجود)\n\`${OWNER_PREFIX}lock all\` - قفل كل السيرفرات الحالية ومنع الجديدة\n\`${OWNER_PREFIX}unlock all\` - فتح كل السيرفرات والسماح بالجديدة\n\`${OWNER_PREFIX}leave <ID_السيرفر>\` - إخراج البوت من سيرفر\n\`${OWNER_PREFIX}clearsettings <ID_السيرفر>\` - مسح إعدادات سيرفر`
                 },
                 {
                     name: '👑 **أوامر عامة**',
@@ -1437,7 +1594,7 @@ client.on('messageCreate', async (message) => {
             )
             .addFields({
                 name: '💡 **ملاحظات هامة**',
-                value: '• يمكنك قفل سيرفرات حتى لو البوت مش موجود فيها\n• يمكنك فتح سيرفرات مقفلة حتى لو البوت مش موجود فيها\n• قائمة `!locklist` تظهر كل السيرفرات المقفلة\n• `!clearownerdm` يمسح كل رسائل البوت في الخاص معك'
+                value: '• يمكنك قفل سيرفرات حتى لو البوت مش موجود فيها\n• يمكنك فتح سيرفرات مقفلة حتى لو البوت مش موجود فيها\n• `!lock all` يقفل كل السيرفرات الحالية ويمنع دخول الجديدة\n• `!unlock all` يفتح كل السيرفرات ويسحب الحظر\n• قائمة `!locklist` تظهر كل السيرفرات المقفلة'
             })
             .setFooter({ text: `ID المالك: ${BOT_OWNER_ID} | ${client.guilds.cache.size} سيرفر` })
             .setTimestamp();
@@ -1594,10 +1751,101 @@ client.on('interactionCreate', async (interaction) => {
         });
     }
     
-    // أمر إعداد التصنيف
+    // أمر إعداد التصنيف (مع قائمة اختيار)
     if (commandName === 'setup' && options.getSubcommand() === 'category') {
         const categoryId = options.getString('id');
         
+        // إذا مافيش ID، نعرض قائمة الاختيار
+        if (!categoryId) {
+            const categories = guild.channels.cache
+                .filter(ch => ch.type === ChannelType.GuildCategory)
+                .map(cat => ({
+                    label: cat.name.length > 25 ? cat.name.substring(0, 22) + '...' : cat.name,
+                    value: cat.id,
+                    description: `ID: ${cat.id}`
+                }));
+            
+            if (categories.length === 0) {
+                return interaction.reply({ 
+                    content: '❌ **لا توجد تصنيفات في هذا السيرفر!**\n\nالرجاء إنشاء تصنيف أولاً ثم استخدام الأمر.',
+                    ephemeral: true 
+                });
+            }
+            
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('select_category')
+                .setPlaceholder('اختر التصنيف...')
+                .addOptions(categories.slice(0, 25)); // ديسكورد بيسمح 25 خيار كحد أقصى
+            
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            
+            const embed = new EmbedBuilder()
+                .setColor(0x3498db)
+                .setTitle('📂 إعداد التصنيف')
+                .setDescription('**اختر التصنيف الذي سيحتوي الغرف الخاصة:**\n\nاستخدم القائمة أدناه أو اكتب `/setup category <ID>`')
+                .addFields({
+                    name: '💡 ملاحظة',
+                    value: 'إذا لم تظهر التصنيفات، قم بتحديث القائمة باستخدام `/setup category` مرة أخرى'
+                })
+                .setFooter({ text: 'يجب عليك اختيار تصنيف لإنشاء الغرف الخاصة داخله' });
+            
+            const reply = await interaction.reply({ 
+                embeds: [embed], 
+                components: [row], 
+                ephemeral: true 
+            });
+            
+            // معالجة اختيار القائمة
+            const filter = i => i.user.id === user.id && i.customId === 'select_category';
+            const collector = reply.createMessageComponentCollector({ filter, time: 60000 });
+            
+            collector.on('collect', async i => {
+                const selectedCategoryId = i.values[0];
+                const selectedCategory = guild.channels.cache.get(selectedCategoryId);
+                
+                if (!selectedCategory) {
+                    await i.update({ 
+                        content: '❌ **التصنيف غير موجود!**',
+                        embeds: [], 
+                        components: [] 
+                    });
+                    return;
+                }
+                
+                settings.categoryId = selectedCategoryId;
+                serverSettings[guild.id] = settings;
+                saveSettings(serverSettings);
+                
+                const successEmbed = new EmbedBuilder()
+                    .setColor(0x2ecc71)
+                    .setTitle('✅ تم إعداد التصنيف بنجاح!')
+                    .setDescription(`**تم تحديد التصنيف:** ${selectedCategory.name}`)
+                    .addFields({
+                        name: '📝 الخطوة التالية',
+                        value: 'استخدم `/setup voice` لتحديد روم الانتظار الصوتي'
+                    })
+                    .setFooter({ text: 'التصنيف: ' + selectedCategory.name });
+                
+                await i.update({ 
+                    embeds: [successEmbed], 
+                    components: [] 
+                });
+            });
+            
+            collector.on('end', collected => {
+                if (collected.size === 0) {
+                    interaction.editReply({ 
+                        content: '⏰ **انتهى وقت الاختيار!**\n\nاستخدم `/setup category` مرة أخرى.',
+                        embeds: [], 
+                        components: [] 
+                    });
+                }
+            });
+            
+            return;
+        }
+        
+        // إذا فيه ID، نستخدم الطريقة العادية
         const category = await guild.channels.fetch(categoryId).catch(() => null);
         
         if (!category || category.type !== ChannelType.GuildCategory) {
@@ -1624,10 +1872,101 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // أمر إعداد روم الصوت
+    // أمر إعداد روم الصوت (مع قائمة اختيار)
     if (commandName === 'setup' && options.getSubcommand() === 'voice') {
         const voiceId = options.getString('id');
         
+        // إذا مافيش ID، نعرض قائمة الاختيار
+        if (!voiceId) {
+            const voiceChannels = guild.channels.cache
+                .filter(ch => ch.type === ChannelType.GuildVoice)
+                .map(vc => ({
+                    label: vc.name.length > 25 ? vc.name.substring(0, 22) + '...' : vc.name,
+                    value: vc.id,
+                    description: `الأعضاء: ${vc.members.size}`
+                }));
+            
+            if (voiceChannels.length === 0) {
+                return interaction.reply({ 
+                    content: '❌ **لا توجد رومات صوتية في هذا السيرفر!**\n\nالرجاء إنشاء روم صوت أولاً.',
+                    ephemeral: true 
+                });
+            }
+            
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('select_voice')
+                .setPlaceholder('اختر روم الصوت...')
+                .addOptions(voiceChannels.slice(0, 25));
+            
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            
+            const embed = new EmbedBuilder()
+                .setColor(0x3498db)
+                .setTitle('🎧 إعداد روم الانتظار الصوتي')
+                .setDescription('**اختر الروم الصوتي الذي سيدخله العملاء للانتظار:**\n\nاستخدم القائمة أدناه أو اكتب `/setup voice <ID>`')
+                .addFields({
+                    name: '💡 ملاحظة',
+                    value: 'هذا الروم هو المكان الذي سينتظر فيه العملاء الدعم'
+                })
+                .setFooter({ text: 'اختر الروم الذي تريد أن يكون روم انتظار' });
+            
+            const reply = await interaction.reply({ 
+                embeds: [embed], 
+                components: [row], 
+                ephemeral: true 
+            });
+            
+            // معالجة اختيار القائمة
+            const filter = i => i.user.id === user.id && i.customId === 'select_voice';
+            const collector = reply.createMessageComponentCollector({ filter, time: 60000 });
+            
+            collector.on('collect', async i => {
+                const selectedVoiceId = i.values[0];
+                const selectedVoice = guild.channels.cache.get(selectedVoiceId);
+                
+                if (!selectedVoice) {
+                    await i.update({ 
+                        content: '❌ **الروم الصوتي غير موجود!**',
+                        embeds: [], 
+                        components: [] 
+                    });
+                    return;
+                }
+                
+                settings.voiceId = selectedVoiceId;
+                serverSettings[guild.id] = settings;
+                saveSettings(serverSettings);
+                
+                const successEmbed = new EmbedBuilder()
+                    .setColor(0x2ecc71)
+                    .setTitle('✅ تم إعداد روم الصوت بنجاح!')
+                    .setDescription(`**تم تحديد الروم الصوتي:** ${selectedVoice.name}`)
+                    .addFields({
+                        name: '📝 الخطوة التالية',
+                        value: 'استخدم `/setup text` لتحديد روم إرسال الإشعارات'
+                    })
+                    .setFooter({ text: 'روم الانتظار: ' + selectedVoice.name });
+                
+                await i.update({ 
+                    embeds: [successEmbed], 
+                    components: [] 
+                });
+            });
+            
+            collector.on('end', collected => {
+                if (collected.size === 0) {
+                    interaction.editReply({ 
+                        content: '⏰ **انتهى وقت الاختيار!**\n\nاستخدم `/setup voice` مرة أخرى.',
+                        embeds: [], 
+                        components: [] 
+                    });
+                }
+            });
+            
+            return;
+        }
+        
+        // إذا فيه ID، نستخدم الطريقة العادية
         const voiceChannel = await guild.channels.fetch(voiceId).catch(() => null);
         
         if (!voiceChannel || voiceChannel.type !== ChannelType.GuildVoice) {
@@ -1654,10 +1993,101 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // أمر إعداد روم النص
+    // أمر إعداد روم النص (مع قائمة اختيار)
     if (commandName === 'setup' && options.getSubcommand() === 'text') {
         const textId = options.getString('id');
         
+        // إذا مافيش ID، نعرض قائمة الاختيار
+        if (!textId) {
+            const textChannels = guild.channels.cache
+                .filter(ch => ch.type === ChannelType.GuildText)
+                .map(tc => ({
+                    label: tc.name.length > 25 ? tc.name.substring(0, 22) + '...' : tc.name,
+                    value: tc.id,
+                    description: `المواضيع: ${tc.topic ? tc.topic.substring(0, 30) + '...' : 'لا يوجد'}`
+                }));
+            
+            if (textChannels.length === 0) {
+                return interaction.reply({ 
+                    content: '❌ **لا توجد رومات نصية في هذا السيرفر!**\n\nالرجاء إنشاء روم نص أولاً.',
+                    ephemeral: true 
+                });
+            }
+            
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('select_text')
+                .setPlaceholder('اختر روم النص...')
+                .addOptions(textChannels.slice(0, 25));
+            
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            
+            const embed = new EmbedBuilder()
+                .setColor(0x3498db)
+                .setTitle('💬 إعداد روم الإشعارات')
+                .setDescription('**اختر الروم النصي الذي سيتم إرسال إشعارات الدعم فيه:**\n\nاستخدم القائمة أدناه أو اكتب `/setup text <ID>`')
+                .addFields({
+                    name: '💡 ملاحظة',
+                    value: 'هذا الروم هو المكان الذي سيرسل فيه البوت إشعارات بوجود عملاء'
+                })
+                .setFooter({ text: 'اختر الروم الذي تريد إرسال الإشعارات فيه' });
+            
+            const reply = await interaction.reply({ 
+                embeds: [embed], 
+                components: [row], 
+                ephemeral: true 
+            });
+            
+            // معالجة اختيار القائمة
+            const filter = i => i.user.id === user.id && i.customId === 'select_text';
+            const collector = reply.createMessageComponentCollector({ filter, time: 60000 });
+            
+            collector.on('collect', async i => {
+                const selectedTextId = i.values[0];
+                const selectedText = guild.channels.cache.get(selectedTextId);
+                
+                if (!selectedText) {
+                    await i.update({ 
+                        content: '❌ **الروم النصي غير موجود!**',
+                        embeds: [], 
+                        components: [] 
+                    });
+                    return;
+                }
+                
+                settings.textId = selectedTextId;
+                serverSettings[guild.id] = settings;
+                saveSettings(serverSettings);
+                
+                const successEmbed = new EmbedBuilder()
+                    .setColor(0x2ecc71)
+                    .setTitle('✅ تم إعداد روم النص بنجاح!')
+                    .setDescription(`**تم تحديد الروم النصي:** ${selectedText.name}`)
+                    .addFields({
+                        name: '📝 الخطوة التالية',
+                        value: 'استخدم `/setup role` لتحديد رتبة الإدارة'
+                    })
+                    .setFooter({ text: 'روم الإشعارات: ' + selectedText.name });
+                
+                await i.update({ 
+                    embeds: [successEmbed], 
+                    components: [] 
+                });
+            });
+            
+            collector.on('end', collected => {
+                if (collected.size === 0) {
+                    interaction.editReply({ 
+                        content: '⏰ **انتهى وقت الاختيار!**\n\nاستخدم `/setup text` مرة أخرى.',
+                        embeds: [], 
+                        components: [] 
+                    });
+                }
+            });
+            
+            return;
+        }
+        
+        // إذا فيه ID، نستخدم الطريقة العادية
         const textChannel = await guild.channels.fetch(textId).catch(() => null);
         
         if (!textChannel || textChannel.type !== ChannelType.GuildText) {
@@ -1684,10 +2114,108 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // أمر إعداد رتبة الإدارة
+    // أمر إعداد رتبة الإدارة (مع قائمة اختيار)
     if (commandName === 'setup' && options.getSubcommand() === 'role') {
         const roleId = options.getString('id');
         
+        // إذا مافيش ID، نعرض قائمة الاختيار
+        if (!roleId) {
+            const roles = guild.roles.cache
+                .filter(role => !role.managed && role.id !== guild.id && !role.name.includes('@everyone'))
+                .map(role => ({
+                    label: role.name.length > 25 ? role.name.substring(0, 22) + '...' : role.name,
+                    value: role.id,
+                    description: `الأعضاء: ${role.members.size}`
+                }))
+                .sort((a, b) => {
+                    const roleA = guild.roles.cache.get(a.value);
+                    const roleB = guild.roles.cache.get(b.value);
+                    return roleB.position - roleA.position;
+                });
+            
+            if (roles.length === 0) {
+                return interaction.reply({ 
+                    content: '❌ **لا توجد رتب في هذا السيرفر!**',
+                    ephemeral: true 
+                });
+            }
+            
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('select_role')
+                .setPlaceholder('اختر رتبة الإدارة...')
+                .addOptions(roles.slice(0, 25));
+            
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            
+            const embed = new EmbedBuilder()
+                .setColor(0x3498db)
+                .setTitle('👑 إعداد رتبة الإدارة')
+                .setDescription('**اختر الرتبة التي ستمنح الأعضاء صلاحية استقبال طلبات الدعم:**\n\nاستخدم القائمة أدناه أو اكتب `/setup role <ID>`')
+                .addFields({
+                    name: '💡 ملاحظة',
+                    value: 'الأعضاء الذين لديهم هذه الرتبة فقط هم من يمكنهم استقبال طلبات الدعم'
+                })
+                .setFooter({ text: 'اختر الرتبة التي تمثل فريق الإدارة' });
+            
+            const reply = await interaction.reply({ 
+                embeds: [embed], 
+                components: [row], 
+                ephemeral: true 
+            });
+            
+            // معالجة اختيار القائمة
+            const filter = i => i.user.id === user.id && i.customId === 'select_role';
+            const collector = reply.createMessageComponentCollector({ filter, time: 60000 });
+            
+            collector.on('collect', async i => {
+                const selectedRoleId = i.values[0];
+                const selectedRole = guild.roles.cache.get(selectedRoleId);
+                
+                if (!selectedRole) {
+                    await i.update({ 
+                        content: '❌ **الرتبة غير موجودة!**',
+                        embeds: [], 
+                        components: [] 
+                    });
+                    return;
+                }
+                
+                settings.adminRoleId = selectedRoleId;
+                serverSettings[guild.id] = settings;
+                saveSettings(serverSettings);
+                
+                const successEmbed = new EmbedBuilder()
+                    .setColor(0x2ecc71)
+                    .setTitle('✅ تم إعداد رتبة الإدارة بنجاح!')
+                    .setDescription(`**تم تحديد الرتبة:** ${selectedRole.name}`)
+                    .addFields({
+                        name: '🎉 تهانينا!',
+                        value: isServerSetupComplete(guild.id) 
+                            ? '**النظام أصبح جاهزاً للعمل!**\n\nيمكن للعملاء الآن استخدام نظام الدعم.' 
+                            : '**مطلوب:** لا تزال تحتاج إلى إعداد التصنيف وروم الصوت وروم النص.'
+                    })
+                    .setFooter({ text: 'رتبة الإدارة: ' + selectedRole.name });
+                
+                await i.update({ 
+                    embeds: [successEmbed], 
+                    components: [] 
+                });
+            });
+            
+            collector.on('end', collected => {
+                if (collected.size === 0) {
+                    interaction.editReply({ 
+                        content: '⏰ **انتهى وقت الاختيار!**\n\nاستخدم `/setup role` مرة أخرى.',
+                        embeds: [], 
+                        components: [] 
+                    });
+                }
+            });
+            
+            return;
+        }
+        
+        // إذا فيه ID، نستخدم الطريقة العادية
         const role = await guild.roles.fetch(roleId).catch(() => null);
         
         if (!role) {
@@ -2150,6 +2678,47 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.on('guildCreate', async (guild) => {
     console.log(`➕ تم إضافة البوت لسيرفر جديد: ${guild.name} (${guild.id})`);
     
+    // التحقق إذا منع دخول سيرفرات جديدة مفعل
+    const blockNewServers = serverSettings.blockNewServers || false;
+    if (blockNewServers) {
+        console.log(`🚫 دخول السيرفرات الجديدة ممنوع: ${guild.name}`);
+        
+        // إرسال رسالة للمالك
+        try {
+            const owner = await guild.fetchOwner();
+            if (owner) {
+                await owner.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0xe74c3c)
+                            .setTitle('🔒 البوت غير متاح حالياً')
+                            .setDescription(`**عذراً، البوت مقفل حاليًا ولا يقبل سيرفرات جديدة**\n\n**السبب:** قفل عام مفعل من المالك`)
+                            .addFields({
+                                name: 'معلومات السيرفر',
+                                value: `• **الاسم:** ${guild.name}\n• **المعرف:** \`${guild.id}\`\n• **الأعضاء:** ${guild.memberCount}`
+                            })
+                            .setFooter({ text: 'Sienna Support Bot' })
+                            .setTimestamp()
+                    ]
+                });
+            }
+        } catch (error) {
+            console.log(`❌ لم أستطع إرسال رسالة لمالك ${guild.name}`);
+        }
+        
+        // خروج البوت من السيرفر
+        setTimeout(async () => {
+            try {
+                await guild.leave();
+                console.log(`🚫 البوت خرج من سيرفر (ممنوع دخول جديد): ${guild.name}`);
+            } catch (error) {
+                console.log(`❌ فشل خروج البوت من ${guild.name}`);
+            }
+        }, 5000);
+        
+        return;
+    }
+    
     // التحقق إذا السيرفر مقفل
     const lockedServers = serverSettings.lockedServers || [];
     if (lockedServers.includes(guild.id)) {
@@ -2293,6 +2862,10 @@ client.on('ready', async () => {
     const allLockedCount = lockedServers.length;
     const activeLocked = lockedServers.filter(id => client.guilds.cache.has(id)).length;
     console.log(`🔐 السيرفرات المقفلة: ${allLockedCount} (${activeLocked} موجودة)`);
+    
+    // التحقق من منع السيرفرات الجديدة
+    const blockNewServers = serverSettings.blockNewServers || false;
+    console.log(`🚫 منع السيرفرات الجديدة: ${blockNewServers ? '✅ مفعل' : '❌ غير مفعل'}`);
     
     // تسجيل الـ Slash Commands
     await registerCommands();
