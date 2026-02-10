@@ -2916,3 +2916,6 @@ process.on('SIGINT', async () => {
     }
     process.exit(0);
 });
+
+// في نهاية bot.js قبل process.on
+require('./ticket-pro.js')(client);
